@@ -258,7 +258,7 @@ Multi-source Dijkstra（scipy.sparse.csgraph.dijkstra）を使用した道路ネ
 
 **PMTiles S3配置先**:
 ```
-https://pmtiles-data.s3.ap-northeast-1.amazonaws.com/mlit/ksj/transit_desert.pmtiles
+https://pmtiles-data.s3.ap-northeast-1.amazonaws.com/mlit/ksj/transit_desert_100m.pmtiles
 ```
 
 **ビューワー**: `docs/index.html`
@@ -273,7 +273,7 @@ https://pmtiles-data.s3.ap-northeast-1.amazonaws.com/mlit/ksj/transit_desert.pmt
 |---|---|---|---|
 | `transit_desert_with_pop.parquet` + `.qml` | **推奨**（166MB・名称付き） | — | — |
 | `transit_desert.parquet` + `.qml` | 全件（149MB） | — | — |
-| `transit_desert.pmtiles` | — | S3配置済み | — |
+| `transit_desert_100m.pmtiles` | — | S3配置済み | — |
 | `summary_national.csv` | — | — | ✓ |
 | `pref_ranking.png` / `urban_rural_compare.png` | — | — | ✓ |
 
