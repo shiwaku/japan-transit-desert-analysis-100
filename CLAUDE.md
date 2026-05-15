@@ -161,7 +161,7 @@ https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P11.html
 https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N07.html
 
 ### 簡易100mメッシュ夜間人口（令和2年国勢調査）
-出典: 東京大学空間情報科学研究センター 西沢明氏 加工データ（GTFS-GIS）
+出典: 東京大学空間情報科学研究センター 西澤明氏 加工データ（GTFS-GIS）
 → `input/100m_mesh_pop2020.parquet` として配置済み（4,982,301件）
 → 列: `MESH_CODE`（10桁）・`PopT`（総人口）・`Pop65over`（65歳以上）
 

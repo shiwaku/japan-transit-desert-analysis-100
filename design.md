@@ -90,7 +90,7 @@ STATION_MIN = 1000m / 60m/分 = 16.67分
                      ↓
             03_aggregate.py  ← pop_total > 0 でフィルタ
                 ↑
-   [100m_mesh_pop2020.parquet] ← GTFS-GIS 西沢明氏 簡易100mメッシュ夜間人口（令和2年国勢調査）
+   [100m_mesh_pop2020.parquet] ← GTFS-GIS 西澤明氏 簡易100mメッシュ夜間人口（令和2年国勢調査）
                      ↓
      transit_desert_with_pop.parquet（4,609,003メッシュ・166MB）
      summary_national.csv / summary_pref.csv
@@ -199,7 +199,7 @@ dist  = sp_dijkstra(G_ext, indices=nv)[:nv]
 
 **入力**:
 - `output/transit_desert.parquet`
-- `input/100m_mesh_pop*.parquet`（GTFS-GIS 西沢明氏 簡易100mメッシュ夜間人口・令和2年国勢調査）
+- `input/100m_mesh_pop*.parquet`（GTFS-GIS 西澤明氏 簡易100mメッシュ夜間人口・令和2年国勢調査）
 
 **処理**:
 - `mesh_code`（10桁）で left join
@@ -317,7 +317,7 @@ python3 make_access_links.py --nationwide \
 - [「交通空白」解消に関する取組](https://www.mlit.go.jp/sogoseisaku/transport/sosei_transport_tk_000237.html) — 国交省の政策文脈
 - [地域公共交通づくりハンドブック](https://www.mlit.go.jp/common/000036945.pdf) — 都市部・地方部別の閾値設定
 - [gtfs-gis.jp 鉄道運行本数データ](https://gtfs-gis.jp/railway_honsu/) — 運行本数付き駅データ（令和4年度版）
-- [GTFS-GIS 西沢明氏 簡易100mメッシュ夜間人口データ](https://gtfs-gis.jp/data/100m_pop2020/) — 簡易100mメッシュ夜間人口（令和2年国勢調査）
+- [GTFS-GIS 西澤明氏 簡易100mメッシュ夜間人口データ](https://gtfs-gis.jp/data/100m_pop2020/) — 簡易100mメッシュ夜間人口（令和2年国勢調査）
 
 ## 11. 測量成果使用承認
 
