@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>公共交通空白地域マップ — 全国250mメッシュ</title>
+  <title>公共交通空白地域マップ — 全国100mメッシュ（統計メッシュ方式）</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" />
   <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3/dist/pmtiles.js"></script>
@@ -267,7 +267,7 @@
 
 <div id="header">
   <h1>公共交通空白地域マップ</h1>
-  <p>全国250mメッシュ × 道路距離 | 令和2年国勢調査</p>
+  <p>全国100mメッシュ × 道路距離 | 令和2年国勢調査</p>
 </div>
 
 <div id="search-panel">
@@ -309,7 +309,7 @@
       <dt>判定閾値</dt>
       <dd>鉄道駅 ≤ 1 km（16.7分）→ 便利<br>バス停 ≤ 500 m（8.3分）→ 不便<br>どちらも超える → 空白</dd>
       <dt>データ出典</dt>
-      <dd>鉄道駅: 国土数値情報 駅別乗降客数（S12）2024年<br>バス停: 国土数値情報 バス停留所（P11）2022年<br>道路: 国土数値情報 道路データ（N13）2024年度<br>人口: 令和2年国勢調査 250mメッシュ（総務省統計局）</dd>
+      <dd>鉄道駅: 国土数値情報 駅別乗降客数（S12）2024年<br>バス停: 国土数値情報 バス停留所（P11）2022年<br>道路: 国土数値情報 道路データ（N13）2024年度<br>人口: 令和2年国勢調査 100mメッシュ（総務省統計局）</dd>
       <dt>バス停</dt>
       <dd>路線バスのみ<br>デマンドバス・高速バスは含まない</dd>
     </dl>
@@ -405,7 +405,7 @@ map.on("load", () => {
       <div style="font-weight:700;color:${CAT_COLOR[code]};margin-bottom:4px">${CAT_LABEL[code]}</div>
       <div>最寄り鉄道駅：${stMin}</div>
       <div>最寄りバス停：${busMin}</div>
-      <div>夜間人口（250m四方）：${pop}</div>
+      <div>夜間人口（100m四方）：${pop}</div>
     </div>`;
   }
 

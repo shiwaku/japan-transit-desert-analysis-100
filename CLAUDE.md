@@ -56,7 +56,7 @@ URL: https://www.mlit.go.jp/sogoseisaku/transport/sosei_transport_tk_000237.html
 | アクセスリンク | `アクセスリンク_L5.parquet`（594万件） | `アクセスリンク_census.parquet`（約3,700万件） |
 | 生成方法 | `--level 5` 列挙 | `--census-parquet` parquet読み込み |
 | ポリゴン生成 | JIS L5コードから算出 | 統計メッシュコードから算出 |
-| 人口データ | `mesh250_pop_*.parquet`（e-Stat） | `mesh100m_pop_*.parquet`（GTFS-GIS等） |
+| 人口データ | `mesh250_pop_*.parquet`（e-Stat） | `100m_mesh_pop*.parquet`（GTFS-GIS等） |
 | 処理時間目安 | 約40分 | 約3〜6時間 |
 
 ### 必要なデータ
@@ -74,8 +74,8 @@ python3 make_access_links.py --nationwide \
 - `MESH_CODE` 10桁コードから重心を逆算（geometry列不要）
 - 出力: `01_MakeNetwork/nationwide_walk/KSJ_N13-24_nationwide_walk_アクセスリンク_census.parquet`
 
-#### 簡易100mメッシュ人口（集計用）
-- `input/mesh100m_pop_*.parquet` として配置
+#### 簡易100mメッシュ夜間人口（集計用）
+- `input/100m_mesh_pop*.parquet` として配置
 - 列名: `MESH_CODE`（10桁）, `PopT`（総人口）, `Pop65over`（65歳以上） ← 自動変換
 
 ### 分析結果（令和2年国勢調査・2026年5月実行）
@@ -119,7 +119,7 @@ python3 make_access_links.py --nationwide \
 │   ├── stations.parquet           # 生成済み鉄道駅ポイント（S12ホーム線形の重心1点）
 │   └── busstops.parquet           # 生成済みバス停ポイント（242,985件）
 ├── input/
-│   └── 100m_mesh_pop2020.parquet  # 簡易100mメッシュ人口（4,982,301件・令和2年国勢調査）
+│   └── 100m_mesh_pop2020.parquet  # 簡易100mメッシュ夜間人口（4,982,301件・令和2年国勢調査）
 │                                  # 列: MESH_CODE / PopT / Pop65over 等（Decimal型）
 └── output/
     ├── transit_desert.parquet          # 全メッシュ別カテゴリ（未実行）
@@ -160,23 +160,23 @@ https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P11.html
 代替: バス停 N07（全国版）
 https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N07.html
 
-### 250mメッシュ人口（令和2年国勢調査）
-https://www.e-stat.go.jp/gis/statmap-search?page=1&type=2&aggregateUnitForBoundary=Q&toukeiCode=00200521
-→ KEY_CODE / 人口（総数）/ ６５歳以上人口　総数 の列を含む parquet を `input/mesh250_pop_00.parquet` として配置
-→ 列名は `03_aggregate.py` が自動変換するので変更不要
+### 簡易100mメッシュ夜間人口（令和2年国勢調査）
+出典: 東京大学空間情報科学研究センター 西沢明氏 加工データ（GTFS-GIS）
+→ `input/100m_mesh_pop2020.parquet` として配置済み（4,982,301件）
+→ 列: `MESH_CODE`（10桁）・`PopT`（総人口）・`Pop65over`（65歳以上）
 
 ## 実行手順
 
 ```bash
-cd 09_transit-desert-analysis
+cd 09_transit-desert-analysis-100
 
 # Step 1: 施設データ準備（S12/P11 配置後）
 python3 scripts/01_prepare_facilities.py
 
-# Step 2〜4: 全処理一括（約40分）
+# Step 2〜4: 全処理一括（約3〜6時間）
 bash run_analysis.sh
 
-# Step 5: 人口集計（mesh250_pop_00.parquet 配置後）
+# Step 5: 人口集計（100m_mesh_pop2020.parquet 配置後）
 python3 scripts/03_aggregate.py
 
 # Step 6: チャート生成
@@ -218,7 +218,7 @@ S12ホーム線形の重心1点をポイントとして使用。
 | 移動速度 | walk 3.6 km/h |
 | 道路リンク数 | 24,045,959件 |
 | 道路ノード数 | 18,614,424件 |
-| L5（250m）アクセスリンク数 | 5,935,127件 |
+| 100mメッシュアクセスリンク数（census） | 4,976,340件 |
 
 全道路対象が必要な理由: 徒歩圏500m/1,000m判定には生活道路・細街路を含む全リンクが必要。フィルター済みネットワークでは歩道・路地が欠落し、空白地域が過大評価される。
 
@@ -227,7 +227,9 @@ S12ホーム線形の重心1点をポイントとして使用。
 ```bash
 cd 01_MakeNetwork
 python3 ksj_to_network_csv.py --nationwide --mode walk --case nationwide_walk
-python3 make_access_links.py  --nationwide --level 5  --case nationwide_walk
+python3 make_access_links.py  --nationwide \
+  --census-parquet ../09_transit-desert-analysis-100/input/100m_mesh_pop2020.parquet \
+  --case nationwide_walk
 ```
 
 出力先: `01_MakeNetwork/nationwide_walk/`
@@ -269,20 +271,19 @@ https://pmtiles-data.s3.ap-northeast-1.amazonaws.com/mlit/ksj/transit_desert.pmt
 
 | ファイル | QGIS | ウェブ | 集計 |
 |---|---|---|---|
-| `transit_desert_with_pop.parquet` + `.qml` | **推奨**（45MB・名称付き） | — | — |
-| `transit_desert.parquet` + `.qml` | 全件（184MB） | — | — |
+| `transit_desert_with_pop.parquet` + `.qml` | **推奨**（166MB・名称付き） | — | — |
+| `transit_desert.parquet` + `.qml` | 全件（149MB） | — | — |
 | `transit_desert.pmtiles` | — | S3配置済み | — |
 | `summary_national.csv` | — | — | ✓ |
 | `pref_ranking.png` / `urban_rural_compare.png` | — | — | ✓ |
 
 ## 注意事項
 
-- `make_access_links.py` の `--nationwide` は従来 L3 専用だったが、L5（250m）対応に修正済み
-  （line 137-139 の level強制上書きを削除）
-- L5（250m）アクセスリンクは約594万件で処理に約8分かかる
+- `make_access_links.py` に `--census-parquet` オプションを追加済み（SHPファイル不要・MESH_CODEから重心逆算）
+- 100mメッシュアクセスリンク（census）は約4,976,340件で生成に約2〜4時間かかる
 - `02_calc_transit_desert.py` の Dijkstra 処理は全国で約6分（駅140秒 + バス停18秒）
-- 250mメッシュ人口データは `*`（秘匿値）を含む列がある → `03_aggregate.py` で 0 扱い
-- `transit_desert_with_pop.parquet` は `pop_total > 0` のみ（1,155,496件・45MB）。全5.9Mメッシュは `transit_desert.parquet`
+- 簡易100mメッシュ夜間人口データ（`100m_mesh_pop2020.parquet`）は Decimal型小数値を含む → `03_aggregate.py` で int に丸め処理済み
+- `transit_desert_with_pop.parquet` は `pop_total > 0` のみ（4,609,003件・166MB）。全4.97Mメッシュは `transit_desert.parquet`（149MB）
 - P11 SHPファイルは SJIS エンコードを含むが pyogrio が自動処理（警告は無視可）
 
 ## 今後の拡張案
