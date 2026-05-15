@@ -1,10 +1,10 @@
-# 公共交通空白地域 全国分析 — 設計書
+# 公共交通空白地域 全国分析 — 設計書（100mメッシュ版）
 
 ## 1. 目的
 
-「車がないと生活できない地域」を全国250mメッシュで可視化し、地方在住者や交通政策立案者が課題の規模を客観的に把握できるデータを提供する。
+「車がないと生活できない地域」を全国100mメッシュ（統計メッシュ方式）で可視化し、地方在住者や交通政策立案者が課題の規模を客観的に把握できるデータを提供する。
 
-帰省するたびに感じる「免許がないと何もできない」という実感を、全国規模で定量化・可視化することを目指す。
+帰省するたびに感じる「免許がないと何もできない」という実感を、全国規模で定量化・可視化することを目指す。250mメッシュ版（`09_transit-desert-analysis/`）の高分解能版。
 
 ## 2. 分析定義
 
@@ -34,7 +34,7 @@ STATION_MIN = 1000m / 60m/分 = 16.67分
 | 距離計算 | 直線距離（ユークリッド） | **道路距離（Dijkstra）** |
 | 駅データ | N02（全駅） | **S12（全駅使用・フィルタリングなし）** |
 | バス停データ | P11（2022年） | **P11（都道府県別最新）** |
-| メッシュ解像度 | 250mメッシュ or 500mメッシュ | **250mメッシュ固定** |
+| メッシュ分解能 | 250mメッシュ or 500mメッシュ | **100mメッシュ（統計メッシュ方式）** |
 
 道路距離により川・山で隔てられた「直線は近いが実際には遠い」ケースを正確に捕捉。S12のホーム線形の重心を NE/NW/SE/SW 4象限スナップで道路ノードに紐付ける。
 
@@ -53,12 +53,22 @@ STATION_MIN = 1000m / 60m/分 = 16.67分
 
 | カテゴリ | 人口 | 割合 | 65歳以上人口 |
 |---|---|---|---|
-| 公共交通便利地域 | 5,389万人 | 42.8% | 1,432万人 |
-| 公共交通不便地域 | 5,358万人 | 42.5% | 1,518万人 |
-| **公共交通空白地域** | **1,847万人** | **14.7%** | **592万人** |
-| 合計 | 1億2,594万人 | 100% | 3,542万人 |
+| 公共交通便利地域 | 5,397万人 | 42.7% | 1,351万人 |
+| 公共交通不便地域 | 5,438万人 | 43.0% | 1,596万人 |
+| **公共交通空白地域** | **1,803万人** | **14.3%** | **570万人** |
+| 合計 | 1億2,638万人 | 100% | 3,517万人 |
 
-※ 人口集計は pop_total > 0 の 1,155,496 メッシュのみ対象（無人エリア除外）。
+※ 人口集計は pop_total > 0 の 4,609,003 メッシュのみ対象（無人エリア除外）。
+
+### 250mメッシュ版との比較
+
+| カテゴリ | 250m版 | 100m版 | 差分 |
+|---|---|---|---|
+| 公共交通便利地域 | 5,389万人（42.8%） | 5,397万人（42.7%） | +8万人 |
+| 公共交通不便地域 | 5,358万人（42.5%） | 5,438万人（43.0%） | +80万人 |
+| **公共交通空白地域** | **1,847万人（14.7%）** | **1,803万人（14.3%）** | **▲44万人** |
+
+100m版で空白地域が▲44万人少ない理由: 250mメッシュでは「ぎりぎり届かない」と判定された境界付近のメッシュが、100mの細粒度ではより正確に「届く」と分類されるため。
 
 ## 4. データフロー
 
@@ -72,17 +82,17 @@ STATION_MIN = 1000m / 60m/分 = 16.67分
                      ↓
           02_calc_transit_desert.py
                 ↑           ↑
-   [全国walk道路リンク]  [250mメッシュアクセスリンク]
-   道路リンク: 24,045,959件  594万件
+   [全国walk道路リンク]  [100mメッシュアクセスリンク（統計メッシュ）]
+   道路リンク: 24,045,959件  498万件（census.parquet）
    道路ノード: 18,614,424件
                      ↓
-     transit_desert.parquet（5,935,127メッシュ）
+     transit_desert.parquet（4,976,340メッシュ）
                      ↓
             03_aggregate.py  ← pop_total > 0 でフィルタ
                 ↑
-   [mesh250_pop_00.parquet] ← e-Stat 令和2年国勢調査
+   [100m_mesh_pop2020.parquet] ← GTFS-GIS 西沢明氏 簡易100mメッシュ人口（令和2年国勢調査）
                      ↓
-     transit_desert_with_pop.parquet（1,155,496メッシュ・45MB）
+     transit_desert_with_pop.parquet（4,609,003メッシュ・166MB）
      summary_national.csv / summary_pref.csv
                      ↓
             04_pref_ranking.py
@@ -91,7 +101,7 @@ STATION_MIN = 1000m / 60m/分 = 16.67分
                      ↓
             05_export_geojson.py
                      ↓
-     transit_desert_web.geojson → tippecanoe → transit_desert.pmtiles（204MB）
+     transit_desert_web.geojson → tippecanoe → transit_desert.pmtiles（203MB）
 ```
 
 ## 5. スクリプト仕様
@@ -147,7 +157,7 @@ S12_PASSENGER_COL      = "S12_061"  # 2024年
 - `data/busstops.parquet`
 - `../01_MakeNetwork/nationwide_walk/KSJ_N13-24_nationwide_walk_道路リンク.parquet`
 - `../01_MakeNetwork/nationwide_walk/KSJ_N13-24_nationwide_walk_道路ノード.parquet`
-- `../01_MakeNetwork/nationwide_walk/KSJ_N13-24_nationwide_walk_アクセスリンク_L5.parquet`
+- `../01_MakeNetwork/nationwide_walk/KSJ_N13-24_nationwide_walk_アクセスリンク_census.parquet`（100mメッシュ版）
 
 **処理**:
 
@@ -160,7 +170,7 @@ S12_PASSENGER_COL      = "S12_061"  # 2024年
    - バス停（242,985件）全体を1回で処理 → 全ノードへの最短時間
 4. **メッシュ距離変換** — アクセスリンクの `road_node + acc_time` でメッシュ単位の時間を算出
 5. **閾値判定** → `category` 列生成
-6. **250mメッシュポリゴン生成** — `mesh_code` から SW 座標を復元して `shapely.geometry.box` でポリゴン化
+6. **100mメッシュポリゴン生成（統計メッシュ方式）** — `ppuuqrstxy` 形式の10桁コードから SW 座標を復元して `shapely.geometry.box` でポリゴン化
 
 **Multi-source Dijkstra 実装**:
 
@@ -172,7 +182,7 @@ dist  = sp_dijkstra(G_ext, indices=nv)[:nv]
 ```
 
 **出力**:
-- `output/transit_desert.parquet`: 5,935,127メッシュ × カテゴリ・徒歩時間
+- `output/transit_desert.parquet`: 4,976,340メッシュ × カテゴリ・徒歩時間（149MB）
 - `output/transit_desert.qml`: QGISスタイル（3色）
 
 **処理時間実測** (WSL2, 64GB RAM):
@@ -181,7 +191,7 @@ dist  = sp_dijkstra(G_ext, indices=nv)[:nv]
 - 駅 Dijkstra: 140秒
 - バス停 Dijkstra: 18秒
 - メッシュ変換・出力: 約8秒
-- **合計: 334秒（約5.6分）**
+- **合計: 約334秒（約5.6分）**
 
 ---
 
@@ -189,16 +199,17 @@ dist  = sp_dijkstra(G_ext, indices=nv)[:nv]
 
 **入力**:
 - `output/transit_desert.parquet`
-- `input/mesh250_pop_*.parquet`（e-Stat 令和2年国勢調査）
+- `input/100m_mesh_pop*.parquet`（GTFS-GIS 西沢明氏 簡易100mメッシュ人口・令和2年国勢調査）
 
 **処理**:
 - `mesh_code`（10桁）で left join
-- 列名を自動変換（KEY_CODE→mesh_code、人口（総数）→pop_total、６５歳以上→pop_65over）
+- 列名を自動変換（MESH_CODE→mesh_code、PopT→pop_total、Pop65over→pop_65over）
+- Decimal型・小数値（按分推計値）を丸めてintに変換
 - **`pop_total > 0` のメッシュのみに絞り込み**（無人エリア・海上除外）
 - カテゴリ別・1次メッシュ別に人口集計
 
 **出力**:
-- `output/transit_desert_with_pop.parquet`: 人口あり1,155,496件のみ（45MB）
+- `output/transit_desert_with_pop.parquet`: 人口あり4,609,003件のみ（166MB）
 - `output/transit_desert_with_pop.qml`: QGISスタイル（categorized）
 - `output/summary_national.csv`: 全国集計
 - `output/summary_pref.csv`: 1次メッシュ別集計
@@ -227,7 +238,7 @@ dist  = sp_dijkstra(G_ext, indices=nv)[:nv]
 **出力**:
 - `output/transit_desert_web.geojson`: PMTiles変換用GeoJSON（465MB・中間ファイル）
 - `output/make_pmtiles.sh`: tippecanoe実行スクリプト
-- `output/transit_desert.pmtiles`: PMTiles（204MB・Z4-Z13）
+- `output/transit_desert.pmtiles`: PMTiles（203MB・Z4-Z13）
 
 **PMTiles S3配置先**:
 ```
@@ -236,19 +247,19 @@ https://pmtiles-data.s3.ap-northeast-1.amazonaws.com/mlit/ksj/transit_desert.pmt
 
 ## 6. 出力カラム仕様
 
-### transit_desert.parquet（全件・5,935,127行）
+### transit_desert.parquet（全件・4,976,340行・149MB）
 
 | カラム | 型 | 内容 |
 |---|---|---|
-| `mesh_code` | str | 250mメッシュコード（10桁・第5次地域区画） |
+| `mesh_code` | str | 100mメッシュコード（10桁・統計メッシュ方式） |
 | `dist_bus_min` | float | 最寄りバス停までの道路徒歩時間（分）|
 | `dist_station_min` | float | 最寄り鉄道駅までの道路徒歩時間（分）|
 | `far_bus` | bool | バス停 > 8.3分（500m超）|
 | `far_station` | bool | 鉄道駅 > 16.7分（1,000m超）|
 | `category` | str | 判定カテゴリ（3種）|
-| `geometry` | Polygon | 250mメッシュポリゴン（EPSG:4326）|
+| `geometry` | Polygon | 100mメッシュポリゴン（統計メッシュ方式・EPSG:4326）|
 
-### transit_desert_with_pop.parquet（人口あり・1,155,496行・45MB）
+### transit_desert_with_pop.parquet（人口あり・4,609,003行・166MB）
 
 上記に加えて:
 
@@ -265,11 +276,14 @@ cd 01_MakeNetwork
 # Step1: 全国walkネットワーク（全道路・フィルターなし）
 python3 ksj_to_network_csv.py --nationwide --mode walk --case nationwide_walk
 
-# Step2: L5アクセスリンク（250mメッシュ対応）
-python3 make_access_links.py --nationwide --level 5 --case nationwide_walk
+# Step2: 100mメッシュアクセスリンク（--census-parquetモード）
+python3 make_access_links.py --nationwide \
+  --census-parquet ../09_transit-desert-analysis-100m/input/100m_mesh_pop2020.parquet \
+  --case nationwide_walk
 ```
 
 出力先: `01_MakeNetwork/nationwide_walk/`
+アクセスリンク: `KSJ_N13-24_nationwide_walk_アクセスリンク_census.parquet`（4,976,340件）
 
 ## 8. 既知の制約と改善案
 
@@ -303,6 +317,7 @@ python3 make_access_links.py --nationwide --level 5 --case nationwide_walk
 - [「交通空白」解消に関する取組](https://www.mlit.go.jp/sogoseisaku/transport/sosei_transport_tk_000237.html) — 国交省の政策文脈
 - [地域公共交通づくりハンドブック](https://www.mlit.go.jp/common/000036945.pdf) — 都市部・地方部別の閾値設定
 - [gtfs-gis.jp 鉄道運行本数データ](https://gtfs-gis.jp/railway_honsu/) — 運行本数付き駅データ（令和4年度版）
+- [GTFS-GIS 西沢明氏 簡易100mメッシュ人口データ](https://gtfs-gis.jp/data/100m_pop2020/) — 簡易100mメッシュ人口（令和2年国勢調査）
 
 ## 11. 測量成果使用承認
 

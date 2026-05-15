@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """
-人口集計スクリプト
+人口集計スクリプト（100mメッシュ版）
 
-transit_desert.parquet と 250mメッシュ人口を結合し、
+transit_desert.parquet と 100mメッシュ人口を結合し、
 移動難民ゾーンの人口を都道府県別・カテゴリ別に集計する。
 
 入力:
-  output/transit_desert.parquet           メッシュ別カテゴリ
-  input/mesh250_pop_*.parquet             250mメッシュ人口（都道府県別・e-Stat変換済み）
+  output/transit_desert.parquet           メッシュ別カテゴリ（100mメッシュ）
+  input/mesh100m_pop_*.parquet            100mメッシュ人口（都道府県別または全国）
 
 出力:
   output/transit_desert_with_pop.parquet  人口付きメッシュ
   output/summary_pref.csv                 都道府県別集計
   output/summary_national.csv             全国集計
 
-e-Stat 250mメッシュ人口データ:
-  https://www.e-stat.go.jp/gis/statmap-search?page=1&type=2&aggregateUnitForBoundary=Q&toukeiCode=00200521
-  令和2年国勢調査 / 250mメッシュ / 全国（都道府県別DL）
-  CSV を parquet に変換後 input/ に配置
+100mメッシュ人口データ（GTFS-GIS 西沢明加工データ）:
+  例: https://gtfs-gis.jp/data/100m_pop2020/{pref_code}/100m_mesh_pop2020_{city_code}.zip
+  MESH_CODE / PopT / Pop65over 列を含む parquet/SHP を
+  input/mesh100m_pop_*.parquet として配置。
+  列名は自動変換するので変更不要（PopT → pop_total, Pop65over → pop_65over）。
 """
 
 from pathlib import Path
@@ -30,16 +31,18 @@ IN_DIR  = ROOT / "input"
 
 
 def load_population():
-    """250mメッシュ人口 parquet を全都道府県分読み込む。"""
-    files = sorted(IN_DIR.glob("mesh250_pop_*.parquet"))
-    if not files:
-        # CSV フォールバック
-        files = sorted(IN_DIR.glob("mesh250_pop_*.csv"))
+    """100mメッシュ人口 parquet を読み込む。"""
+    # 想定パターン: 100m_mesh_pop*.parquet / mesh100m_pop_*.parquet
+    files = (sorted(IN_DIR.glob("100m_mesh_pop*.parquet")) +
+             sorted(IN_DIR.glob("mesh100m_pop*.parquet")) +
+             sorted(IN_DIR.glob("100m_mesh_pop*.csv")) +
+             sorted(IN_DIR.glob("mesh100m_pop*.csv")))
     if not files:
         raise FileNotFoundError(
-            f"250mメッシュ人口ファイルが見つかりません: {IN_DIR}\n"
-            "e-Stat から令和2年国勢調査 250mメッシュ人口をダウンロードし、\n"
-            "mesh250_pop_{{都道府県コード}}.parquet として input/ に配置してください。"
+            f"100mメッシュ人口ファイルが見つかりません: {IN_DIR}\n"
+            "GTFS-GIS 等から100mメッシュ人口データをダウンロードし、\n"
+            "100m_mesh_pop*.parquet として input/ に配置してください。\n"
+            "列名: MESH_CODE（10桁）/ PopT（総人口）/ Pop65over（65歳以上）"
         )
 
     dfs = []
@@ -51,15 +54,16 @@ def load_population():
         dfs.append(df)
     pop = pd.concat(dfs, ignore_index=True)
 
-    # 列名を統一（e-Stat CSVは列名がバラバラな場合があるため）
+    # 列名を統一
+    # 優先順位: 完全一致 > 部分一致（MESH1R_CODE等の誤マッチを防ぐため）
     col_map = {}
     for col in pop.columns:
-        cl = col.lower()
-        if "mesh" in cl and "code" in cl:
+        cl = col.lower().replace("_", "")
+        if cl in ("meshcode", "mesh_code"):
             col_map[col] = "mesh_code"
-        elif cl in ("popt", "総人口", "pop_total", "population"):
+        elif cl in ("popt", "総人口", "poptotal", "population"):
             col_map[col] = "pop_total"
-        elif "65" in cl and ("over" in cl or "以上" in cl):
+        elif "65" in col.lower() and ("over" in col.lower() or "以上" in col.lower()):
             col_map[col] = "pop_65over"
     pop = pop.rename(columns=col_map)
 
@@ -69,11 +73,52 @@ def load_population():
         raise ValueError(f"pop_total 列が見つかりません。列名: {list(pop.columns)}")
 
     pop["mesh_code"] = pop["mesh_code"].astype(str).str.zfill(10)
-    pop["pop_total"] = pd.to_numeric(pop["pop_total"], errors="coerce").fillna(0).astype(int)
+    # Decimal型・小数値（按分推計値）を丸めてintに変換
+    pop["pop_total"] = pd.to_numeric(pop["pop_total"], errors="coerce").fillna(0).round().astype(int)
     if "pop_65over" in pop.columns:
-        pop["pop_65over"] = pd.to_numeric(pop["pop_65over"], errors="coerce").fillna(0).astype(int)
+        pop["pop_65over"] = pd.to_numeric(pop["pop_65over"], errors="coerce").fillna(0).round().astype(int)
 
     return pop[["mesh_code"] + [c for c in ["pop_total", "pop_65over"] if c in pop.columns]]
+
+
+def _write_qml_with_pop(path: Path):
+    cats = [
+        ("0_公共交通便利地域", "89,203,143,200",  "鉄道駅 walk 1,000m以内"),
+        ("1_公共交通不便地域", "255,200,0,200",   "鉄道駅1,000m超・バス停 500m以内"),
+        ("2_公共交通空白地域", "220,30,30,200",   "鉄道駅1,000m超 AND バス停500m超"),
+    ]
+    cat_xml = "\n".join(
+        f'      <category symbol="{i}" value="{v}" label="{l}" render="true"/>'
+        for i, (v, _, l) in enumerate(cats)
+    )
+    sym_xml = "\n".join(
+        f'      <symbol name="{i}" type="fill" alpha="1" clip_to_extent="1"'
+        f' is_animated="0" frame_rate="10">'
+        f'<data_defined_properties><Option type="Map">'
+        f'<Option name="name" type="QString" value=""/>'
+        f'<Option name="properties"/>'
+        f'<Option name="type" type="QString" value="collection"/>'
+        f'</Option></data_defined_properties>'
+        f'<layer class="SimpleFill" enabled="1" pass="0" locked="0">'
+        f'<Option type="Map">'
+        f'<Option name="color" type="QString" value="{c}"/>'
+        f'<Option name="outline_style" type="QString" value="no"/>'
+        f'<Option name="style" type="QString" value="solid"/>'
+        f'</Option></layer></symbol>'
+        for i, (_, c, _) in enumerate(cats)
+    )
+    content = (
+        "<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>\n"
+        '<qgis version="3.34.0" styleCategories="Symbology">\n'
+        '  <renderer-v2 type="categorizedSymbol" attr="category"'
+        ' forceraster="0" symbollevels="0" usingSymbolLevels="0" enableorderby="0">\n'
+        '    <categories>\n' + cat_xml + '\n    </categories>\n'
+        '    <symbols>\n' + sym_xml + '\n    </symbols>\n'
+        '    <rotation/><sizescale/>\n  </renderer-v2>\n'
+        '  <blendMode>0</blendMode><featureBlendMode>0</featureBlendMode>'
+        '<layerOpacity>1</layerOpacity>\n</qgis>\n'
+    )
+    path.write_text(content, encoding="utf-8")
 
 
 def main():
@@ -82,7 +127,7 @@ def main():
     gdf["mesh_code"] = gdf["mesh_code"].astype(str).str.zfill(10)
     print(f"  {len(gdf):,} メッシュ")
 
-    print("250mメッシュ人口読み込み...")
+    print("100mメッシュ人口読み込み...")
     pop = load_population()
     print(f"  {len(pop):,} メッシュ（人口データ）")
 
@@ -99,6 +144,9 @@ def main():
     out = OUT_DIR / "transit_desert_with_pop.parquet"
     merged_pop.to_parquet(out)
     print(f"  {out.name} 出力（pop_total > 0 のみ）")
+
+    _write_qml_with_pop(OUT_DIR / "transit_desert_with_pop.qml")
+    print(f"  transit_desert_with_pop.qml 出力")
 
     # 全国集計（人口ありメッシュのみ）
     national = (

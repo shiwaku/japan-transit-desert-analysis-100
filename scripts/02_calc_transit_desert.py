@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-公共交通空白地域算出スクリプト（道路距離版）
+公共交通空白地域算出スクリプト（道路距離版・100mメッシュ版）
 
-各250mメッシュについて：
+各100mメッシュ（統計メッシュ方式）について：
   ① 最寄りバス停までの道路距離（walkモード・Multi-source Dijkstra）
   ② 最寄り鉄道駅までの道路距離（walkモード・Multi-source Dijkstra）
 を計算し、国土交通省定義に基づく公共交通カテゴリを判定する。
@@ -12,21 +12,29 @@
   公共交通不便地域: 鉄道駅 1,000m超・最寄りバス停 walk 500m以内（≒8.3分）
   公共交通空白地域: 鉄道駅 1,000m超 AND バス停 500m超
 
+メッシュ体系:
+  100mメッシュ = L3（1km）を緯度10分割 × 経度10分割した統計メッシュ（10桁コード）
+  L5（250m・2進分割）とは異なるグリッド体系。
+  コード形式: ppuuqrstxy
+    pp=int(lat*1.5), uu=int(lon-100), q=L2row(0-7), r=L2col(0-7)
+    s=L3row(0-9), t=L3col(0-9), x=100m内row(0-9), y=100m内col(0-9)
+
 入力:
   data/stations.parquet               鉄道駅ポイント（S12）
   data/busstops.parquet               バス停ポイント（P11）
   ../01_MakeNetwork/nationwide_walk/  全国walkモード道路ネットワーク
     KSJ_N13-24_nationwide_walk_道路リンク.parquet
     KSJ_N13-24_nationwide_walk_道路ノード.parquet
-    KSJ_N13-24_nationwide_walk_アクセスリンク_L5.parquet
+    KSJ_N13-24_nationwide_walk_アクセスリンク_census.parquet  ← 100mメッシュ版
 
 出力:
-  output/transit_desert.parquet       250mメッシュ別判定結果
+  output/transit_desert.parquet       100mメッシュ別判定結果
   output/transit_desert.qml          QGISスタイル（3カテゴリ）
 
-ネットワーク生成コマンド（初回のみ・run_analysis.sh で自動実行）:
-  python3 ksj_to_network_csv.py --nationwide --mode walk --case nationwide_walk
-  python3 make_access_links.py   --nationwide --level 5  --case nationwide_walk
+アクセスリンク生成コマンド（初回のみ）:
+  # 全国100m国勢調査SHPを1ファイルに結合後:
+  python3 make_access_links.py --nationwide --census-shp input/census100m_nationwide.shp \\
+                               --case nationwide_walk
 """
 
 import argparse
@@ -51,7 +59,7 @@ OUT_DIR.mkdir(exist_ok=True)
 NATIONWIDE_WALK_DIR = ROOT.parent / "01_MakeNetwork" / "nationwide_walk"
 LINKS_PATH  = NATIONWIDE_WALK_DIR / "KSJ_N13-24_nationwide_walk_道路リンク.parquet"
 NODES_PATH  = NATIONWIDE_WALK_DIR / "KSJ_N13-24_nationwide_walk_道路ノード.parquet"
-ACCESS_PATH = NATIONWIDE_WALK_DIR / "KSJ_N13-24_nationwide_walk_アクセスリンク_L5.parquet"
+ACCESS_PATH = NATIONWIDE_WALK_DIR / "KSJ_N13-24_nationwide_walk_アクセスリンク_census.parquet"
 
 # walk 3.6 km/h = 60 m/分 での距離閾値（分）
 BUS_MIN     = 500  / 60   # 8.33分（500m相当）
@@ -191,9 +199,11 @@ def main(station_max_dist_m: float = STATION_QUAD_MAX_DIST_M):
         if not p.exists():
             raise FileNotFoundError(
                 f"{p.name} が見つかりません。\n"
-                "run_analysis.sh を実行するか、以下を先に実行してください:\n"
-                "  python3 ksj_to_network_csv.py --nationwide --mode walk --case nationwide_walk\n"
-                "  python3 make_access_links.py   --nationwide --level 5  --case nationwide_walk"
+                "100mメッシュアクセスリンクを先に生成してください:\n"
+                "  python3 make_access_links.py --nationwide \\\n"
+                "    --census-shp input/census100m_nationwide.shp \\\n"
+                "    --case nationwide_walk\n"
+                "（全国100m国勢調査SHPを1ファイルに結合してから実行）"
             )
     links  = gpd.read_parquet(LINKS_PATH)
     nodes  = gpd.read_parquet(NODES_PATH)
@@ -261,24 +271,28 @@ def main(station_max_dist_m: float = STATION_QUAD_MAX_DIST_M):
                             "2_公共交通空白地域")
     )
 
-    # ── L5ポリゴン生成 ──
+    # ── 100mメッシュポリゴン生成（統計メッシュ方式: ppuuqrstxy）──
+    # コード構造: pp=lat*1.5, uu=lon-100, q=L2row(0-7), r=L2col(0-7),
+    #             s=L3row(0-9), t=L3col(0-9), x=100m内row(0-9), y=100m内col(0-9)
     print("メッシュポリゴン生成...")
-    codes_s = pd.Series(mesh_codes).str.zfill(10)
+    codes_s = pd.Series(mesh_codes)
     pp_ = codes_s.str[0:2].astype(int).values
-    qq_ = codes_s.str[2:4].astype(int).values
-    r_  = codes_s.str[4].astype(int).values
-    s_  = codes_s.str[5].astype(int).values
-    t_  = codes_s.str[6].astype(int).values
-    u_  = codes_s.str[7].astype(int).values
-    v_  = codes_s.str[8].astype(int).values
-    w_  = codes_s.str[9].astype(int).values
-    dlat2 = (2/3)/8;  dlon2 = 1.0/8
-    dlat3 = dlat2/10; dlon3 = dlon2/10
-    dlat4 = dlat3/2;  dlon4 = dlon3/2
-    dlat5 = dlat4/2;  dlon5 = dlon4/2
-    lats_sw = pp_/1.5 + r_*dlat2 + t_*dlat3 + ((v_-1)//2)*dlat4 + ((w_-1)//2)*dlat5
-    lons_sw = (qq_+100).astype(float) + s_*dlon2 + u_*dlon3 + ((v_-1)%2)*dlon4 + ((w_-1)%2)*dlon5
-    geoms = [sbox(lo, la, lo+dlon5, la+dlat5)
+    uu_ = codes_s.str[2:4].astype(int).values
+    q_  = codes_s.str[4].astype(int).values
+    r_  = codes_s.str[5].astype(int).values
+    s_  = codes_s.str[6].astype(int).values
+    t_  = codes_s.str[7].astype(int).values
+    x_  = codes_s.str[8].astype(int).values   # 100m内row 0-9 (S→N)
+    y_  = codes_s.str[9].astype(int).values   # 100m内col 0-9 (W→E)
+    dlat2    = 1.0 / 12        # = (2/3)/8
+    dlon2    = 1.0 / 8
+    dlat3    = dlat2 / 10
+    dlon3    = dlon2 / 10
+    dlat100m = dlat3 / 10      # ≈92.5m
+    dlon100m = dlon3 / 10      # ≈113m（35°N付近）
+    lats_sw = pp_ / 1.5 + q_ * dlat2 + s_ * dlat3 + x_ * dlat100m
+    lons_sw = (uu_ + 100).astype(float) + r_ * dlon2 + t_ * dlon3 + y_ * dlon100m
+    geoms = [sbox(lo, la, lo + dlon100m, la + dlat100m)
              for lo, la in zip(lons_sw, lats_sw)]
 
     # ── 出力 ──

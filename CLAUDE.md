@@ -1,8 +1,9 @@
-# 公共交通空白地域分析 — Claude Code 向けプロジェクト仕様
+# 公共交通空白地域分析（100mメッシュ版）— Claude Code 向けプロジェクト仕様
 
 ## 概要
 
-「車がないと生活できない地域（公共交通空白地域）」を全国250mメッシュで可視化し、該当人口を定量化する。
+「車がないと生活できない地域（公共交通空白地域）」を全国**100mメッシュ**（統計メッシュ方式）で可視化し、該当人口を定量化する。
+250mメッシュ版（`09_transit-desert-analysis/`）の高分解能版。道路ネットワークは共通。
 
 ### 国土交通省による定義
 
@@ -27,77 +28,115 @@ URL: https://www.mlit.go.jp/sogoseisaku/transport/sosei_transport_tk_000237.html
 | 距離計算 | 直線距離（ユークリッド） | **道路ネットワーク距離（Dijkstra）** |
 | 駅データ | N02（全駅） | **S12（全駅・乗降客数情報付き）** |
 | バス停データ | N07 | **P11（都道府県別最新）** |
-| メッシュ解像度 | 250mまたは500m | **250m固定** |
+| メッシュ分解能 | 250mまたは500m | **100m（統計メッシュ方式）** |
 
 **優位点**:
 - 川・山で隔てられた「直線は近いが実際には遠い」エリアを正確に捕捉
 - S12を使用することで駅名・運営者・乗降客数などの属性情報を保持できる
 - 全処理スクリプト化で再現・更新が容易
+- **250m版より約6.25倍の高い空間分解能**（100m × 100m）で精密な空間分布を把握可能
+
+## 100mメッシュ仕様
+
+### メッシュ体系
+
+100mメッシュは**統計メッシュ方式**（L3 1kmメッシュを緯度10分割×経度10分割）であり、JIS標準の2進分割メッシュ（L5=250m, L6=125m）とは**別体系**。
+
+| 項目 | 値 |
+|---|---|
+| メッシュサイズ | 約100m × 100m（緯度方向 ≈92.5m, 経度方向 ≈113m @35°N） |
+| コード桁数 | 10桁（例: `5238432913`） |
+| コード形式 | `ppuuqrstxy` （pp=lat×1.5, uu=lon-100, q=L2行0-7, r=L2列0-7, s=L3行0-9, t=L3列0-9, x=100m行0-9, y=100m列0-9） |
+| 全国メッシュ数 | 約3,700万件（250m版の約6.25倍） |
+
+### 250m版との差異
+
+| 項目 | 250m版 | 100m版（本ディレクトリ） |
+|---|---|---|
+| アクセスリンク | `アクセスリンク_L5.parquet`（594万件） | `アクセスリンク_census.parquet`（約3,700万件） |
+| 生成方法 | `--level 5` 列挙 | `--census-parquet` parquet読み込み |
+| ポリゴン生成 | JIS L5コードから算出 | 統計メッシュコードから算出 |
+| 人口データ | `mesh250_pop_*.parquet`（e-Stat） | `mesh100m_pop_*.parquet`（GTFS-GIS等） |
+| 処理時間目安 | 約40分 | 約3〜6時間 |
+
+### 必要なデータ
+
+#### 100mメッシュアクセスリンク生成（`--census-parquet` モード）
+`make_access_links.py` に `--census-parquet` オプションを追加済み。SHPファイル不要で、人口parquetの `MESH_CODE` 列からメッシュ重心を算出してスナップする。
+
+```bash
+cd 01_MakeNetwork
+python3 make_access_links.py --nationwide \
+  --census-parquet ../09_transit-desert-analysis-100m/input/100m_mesh_pop2020.parquet \
+  --case nationwide_walk
+```
+
+- `MESH_CODE` 10桁コードから重心を逆算（geometry列不要）
+- 出力: `01_MakeNetwork/nationwide_walk/KSJ_N13-24_nationwide_walk_アクセスリンク_census.parquet`
+
+#### 簡易100mメッシュ人口（集計用）
+- `input/mesh100m_pop_*.parquet` として配置
+- 列名: `MESH_CODE`（10桁）, `PopT`（総人口）, `Pop65over`（65歳以上） ← 自動変換
 
 ### 分析結果（令和2年国勢調査・2026年5月実行）
 
-駅スナップ: S12ホーム線形の重心1点 → NE/NW/SE/SW 4象限スナップ
-アクセスリンク: 1,000ノード未満の孤立成分を除外（42,537成分中32成分を有効・有効ノード 18,441,645件）
+アクセスリンク: 4,976,340件（100mメッシュ）/ 9,952,680件（双方向）
+人口あり: 4,609,003メッシュ / 全4,976,340メッシュ
 
 | カテゴリ | 人口 | 割合 |
 |---|---|---|
-| 公共交通便利地域 | 5,389万人 | 42.8% |
-| 公共交通不便地域 | 5,358万人 | 42.5% |
-| **公共交通空白地域** | **1,847万人** | **14.7%** |
+| 公共交通便利地域 | 5,397万人 | 42.7% |
+| 公共交通不便地域 | 5,438万人 | 43.0% |
+| **公共交通空白地域** | **1,803万人** | **14.3%** |
 
-65歳以上では **592万人**（高齢者全体の16.8%）が空白地域に居住。
+65歳以上では **570万人**（65歳以上人口の約16.3%）が空白地域に居住。
+
+**250mメッシュ版との比較:**
+
+| 項目 | 250m版 | 100m版 | 差分 |
+|---|---|---|---|
+| 公共交通便利地域 | 5,389万人（42.8%） | 5,397万人（42.7%） | +8万人 |
+| 公共交通不便地域 | 5,358万人（42.5%） | 5,438万人（43.0%） | +80万人 |
+| **公共交通空白地域** | **1,847万人（14.7%）** | **1,803万人（14.3%）** | **▲44万人** |
+| 65歳以上空白地域 | 592万人 | 570万人 | ▲22万人 |
+
+100m版で空白地域がわずかに少ない理由: 250mメッシュでは「ぎりぎり届かない」と判定された境界付近のメッシュが、100mの細粒度ではより正確に「届く」と分類されるため。
 
 ## ディレクトリ構成
 
 ```
-09_transit-desert-analysis/
+09_transit-desert-analysis-100m/
 ├── CLAUDE.md
-├── README.md                      # GitHubリポジトリ向け概要説明
-├── design.md                      # 設計書（定義・アルゴリズム・データフロー・実測値）
-├── run_analysis.sh                # 全処理一括実行スクリプト（Step1〜3）
-├── Makefile                       # make all / make facilities 等
+├── run_analysis.sh                # 全処理一括実行スクリプト（100mメッシュ版）
 ├── requirements.txt               # Python依存パッケージ
-├── LICENSE                        # MIT
 ├── scripts/
 │   ├── 01_prepare_facilities.py   # S12/P11 → stations/busstops.parquet（名称列付き）
-│   ├── 02_calc_transit_desert.py  # Multi-source Dijkstra → transit_desert.parquet
+│   ├── 02_calc_transit_desert.py  # Multi-source Dijkstra → transit_desert.parquet（100mメッシュ版）
 │   ├── 03_aggregate.py            # 人口結合・pop_total>0フィルタ → transit_desert_with_pop.parquet
 │   ├── 04_pref_ranking.py         # 都道府県別空白率ランキング・可視化
 │   └── 05_export_geojson.py       # GeoJSON出力 + tippecanoe PMTiles変換
-├── docs/
-│   ├── index.html                 # MapLibre GL JS ウェブビューワー（住所検索・スマホ対応）
-│   └── pale.json                  # 国土地理院ベクトルタイル淡色スタイル
 ├── data/
-│   ├── S12/                       # 駅別乗降客数（要ダウンロード）
-│   ├── P11/                       # バス停留所（要ダウンロード）
-│   ├── stations.parquet           # 生成済み鉄道駅ポイント（S12ホーム線形の重心1点・駅名・運営者・路線名付き）
-│   └── busstops.parquet           # 生成済みバス停ポイント（242,985件・バス停名・バス会社名付き）
+│   ├── stations.parquet           # 生成済み鉄道駅ポイント（S12ホーム線形の重心1点）
+│   └── busstops.parquet           # 生成済みバス停ポイント（242,985件）
 ├── input/
-│   └── mesh250_pop_00.parquet     # 250mメッシュ人口（e-Stat 令和2年国勢調査）
+│   └── 100m_mesh_pop2020.parquet  # 簡易100mメッシュ人口（4,982,301件・令和2年国勢調査）
+│                                  # 列: MESH_CODE / PopT / Pop65over 等（Decimal型）
 └── output/
-    ├── transit_desert.parquet          # 全メッシュ別カテゴリ（5,935,127件・184MB）
-    ├── transit_desert.qml              # QGISスタイル（全件用・3色）
-    ├── transit_desert_with_pop.parquet # 人口ありメッシュのみ（1,155,496件・45MB・QGIS推奨）
-    ├── transit_desert_with_pop.qml     # QGISスタイル（人口あり用・categorized）
-    ├── transit_desert.pmtiles          # ウェブ公開用PMTiles（204MB・S3配置済み）
-    ├── make_pmtiles.sh                 # tippecanoe実行スクリプト
-    ├── summary_national.csv            # 全国集計
-    ├── summary_pref.csv                # 1次メッシュ別集計
-    ├── pref_ranking.csv                # 都道府県別空白率ランキング
-    ├── pref_ranking.png                # 空白率ランキング横棒グラフ
-    ├── urban_rural_compare.png         # 都市vs地方の3色パイチャート比較
-    └── Map.qgz                         # QGISプロジェクト
+    ├── transit_desert.parquet          # 全メッシュ別カテゴリ（未実行）
+    ├── transit_desert.qml              # QGISスタイル（3カテゴリ）
+    ├── transit_desert_with_pop.parquet # 人口ありメッシュのみ（未実行）
+    └── summary_national.csv            # 全国集計（未実行）
 ```
 
 ## 国交省公表数値との比較
 
 | 比較項目 | 国交省 QGIS手順（2025年4月） | 本試算 |
 |---|---|---|
-| **公共交通空白地域 人口** | **約735万人（5.8%）** | **約1,847万人（14.7%）** |
+| **公共交通空白地域 人口** | **約735万人（5.8%）** | **約1,803万人（14.3%）** |
 | 距離計算方法 | 直線距離（バッファ） | 道路ネットワーク距離（Dijkstra） |
 | 駅データ | N02（2023年） | S12（2024年・ホーム線形重心1点） |
 | バス停データ | P11（2022年） | P11（2022年）同一 |
-| メッシュ解像度 | 250m | 250m 同一 |
+| メッシュ分解能 | 250m | **100m（統計メッシュ方式）** |
 | 人口データ | 令和2年国勢調査 | 令和2年国勢調査 同一 |
 
 差異の主因: 道路ネットワーク距離は直線距離の1.2〜1.5倍になることが多い。直線800〜900m圏内の地域でも歩行ネットワーク上は1km超となり「空白地域」に分類されるため、本試算の空白人口が約2.5倍多くなる。
