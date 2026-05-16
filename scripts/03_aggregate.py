@@ -22,6 +22,7 @@ transit_desert.parquet と 100mメッシュ人口を結合し、
 """
 
 from pathlib import Path
+import os
 import pandas as pd
 import geopandas as gpd
 
@@ -33,10 +34,13 @@ IN_DIR  = ROOT / "input"
 def load_population():
     """100mメッシュ人口 parquet を読み込む。"""
     # 想定パターン: 100m_mesh_pop*.parquet / mesh100m_pop_*.parquet
-    files = (sorted(IN_DIR.glob("100m_mesh_pop*.parquet")) +
-             sorted(IN_DIR.glob("mesh100m_pop*.parquet")) +
-             sorted(IN_DIR.glob("100m_mesh_pop*.csv")) +
-             sorted(IN_DIR.glob("mesh100m_pop*.csv")))
+    # WSL対応: Path.glob()はWindows FSで動作しないためos.listdirを使用
+    all_files = os.listdir(IN_DIR)
+    files = sorted(
+        IN_DIR / f for f in all_files
+        if (f.startswith("100m_mesh_pop") or f.startswith("mesh100m_pop"))
+        and f.endswith((".parquet", ".csv"))
+    )
     if not files:
         raise FileNotFoundError(
             f"100mメッシュ人口ファイルが見つかりません: {IN_DIR}\n"
