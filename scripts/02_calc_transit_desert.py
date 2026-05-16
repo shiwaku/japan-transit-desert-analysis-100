@@ -44,12 +44,12 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
 from scipy.sparse import csr_matrix, coo_matrix
 from scipy.sparse import vstack as sp_vstack
 from scipy.sparse.csgraph import dijkstra as sp_dijkstra
 from scipy.sparse.csgraph import connected_components as sp_cc
 from scipy.spatial import KDTree
-from shapely.geometry import box as sbox
 
 ROOT     = Path(__file__).parent.parent
 DATA_DIR = ROOT / "data"
@@ -253,7 +253,7 @@ def main(station_max_dist_m: float = STATION_QUAD_MAX_DIST_M):
     road_nids  = access["road_node"].astype(int).to_numpy()
     acc_time   = access["time_001min"].astype(float).to_numpy() * 0.01  # 分
 
-    graph_idxs = np.array([n2i.get(int(n), -1) for n in road_nids], dtype=np.int32)
+    graph_idxs = pd.Series(road_nids).map(n2i).fillna(-1).astype(np.int32).to_numpy()
     valid      = graph_idxs >= 0
     safe_idxs  = np.where(valid, graph_idxs, 0)
 
@@ -292,8 +292,7 @@ def main(station_max_dist_m: float = STATION_QUAD_MAX_DIST_M):
     dlon100m = dlon3 / 10      # ≈113m（35°N付近）
     lats_sw = pp_ / 1.5 + q_ * dlat2 + s_ * dlat3 + x_ * dlat100m
     lons_sw = (uu_ + 100).astype(float) + r_ * dlon2 + t_ * dlon3 + y_ * dlon100m
-    geoms = [sbox(lo, la, lo + dlon100m, la + dlat100m)
-             for lo, la in zip(lons_sw, lats_sw)]
+    geoms = shapely.box(lons_sw, lats_sw, lons_sw + dlon100m, lats_sw + dlat100m)
 
     # ── 出力 ──
     gdf = gpd.GeoDataFrame({
